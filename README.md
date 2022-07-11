@@ -4,6 +4,6 @@ HKU GameDev2 - Ai Kernmodule 3
 
 Documentation:
 
-Build:
+Build: https://github.com/MicksTape/GameDev3-BehaviourSystem-MickTeunissen/blob/main/BuildBehaviourSystem_MickTeunissen.zip
 
 Video:
