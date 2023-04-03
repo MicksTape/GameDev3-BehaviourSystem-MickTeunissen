@@ -9,7 +9,7 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 193634, guid: 2ab04f1ae8c6cf44ebc104d722d22baf, type: 3}
       propertyPath: m_Name
-      value: Shuriken
+      value: Shuriken Variant
       objectReference: {fileID: 0}
     - target: {fileID: 454322, guid: 2ab04f1ae8c6cf44ebc104d722d22baf, type: 3}
       propertyPath: m_RootOrder
@@ -71,13 +71,6 @@ MonoBehaviour:
   m_GameObject: {fileID: 1744582727991892700}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: cc37ab7458ea12948a429af9ace62f51, type: 3}
+  m_Script: {fileID: 11500000, guid: 91a267491aacace4e8a85298c18cca29, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  gunName: Shuriken
-  muzzle: {fileID: 0}
-  bullet: {fileID: 0}
-  numBullets: 1
-  spread: 0
-  msBetweenShots: 100
-  damageMultiplier: 1

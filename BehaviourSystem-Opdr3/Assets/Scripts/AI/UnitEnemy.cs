@@ -1,14 +1,15 @@
 ﻿using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
-using Panda;
 using UnityEngine.UI;
+using UnityEngine.AI;
 
 public class UnitEnemy : MonoBehaviour {
 
 	const float minPathUpdateTime = .2f;
 	const float pathUpdateMoveThreshold = .5f;
 	bool followingPath = true;
+	private BTNode tree;
 
 	[Header("Movement")]
 	[SerializeField] private Transform player;
@@ -18,9 +19,7 @@ public class UnitEnemy : MonoBehaviour {
 	[SerializeField] private float turnDst = 5;
 	[SerializeField] private float stoppingDst = 10;
 	[SerializeField] private Transform[] checkpoints;
-	[SerializeField] private int checkpointCounter = 0;
-	private float waitTime;
-	[SerializeField] private float checkpointWaitTime = 3.0f;
+	[SerializeField] private int checkpointCounter;
 
 	[Header("Health")]
 	[SerializeField] private Image healthBar;
@@ -37,43 +36,37 @@ public class UnitEnemy : MonoBehaviour {
 
 	[Header("Attack")]
 	[SerializeField] private GameObject katana;
-	[SerializeField] private Transform[] weaponRacks;
+	[SerializeField] private GameObject katanaPrefab;
+	[SerializeField] private Transform[] weapons;
 
 	[SerializeField] private Animator anim;
 	[SerializeField] private AudioSource takeHitSound;
-	public float slashDamage = 10f;
+	public float slashDamage = 30f;
 	private float slashInterval;
 	[SerializeField] private float startTimeSlashInterval = 2f;
-	public float lookRadius = 25f;
-	private float originalLookRadius;
-	[SerializeField] private float attackRadius = 20f;
+	public float lookRadius = 10f;
+	[SerializeField] private float attackRadius = 5f;
 
 	[SerializeField] private Image statusImage;
 	[SerializeField] private Sprite attackSprite;
 	private Sprite defendSprite;
 	private bool isDead = false;
+	private Transform guard;
 
-	[Task]
-	private bool isStunned = false;
-
-	[Task]
-	private bool playerInRange = false;
-
-	[Task]
-	private bool hasKatana = false;
-
-	[Task]
-	private bool attackPlayer = false;
-
-
-
-	
+	public bool hasArrivedAtCheckpoint = false;
+	public bool hasArrivedAtWeaponRack = false;
+	public bool playerInRange = false;
+	public bool playerInAttackRange = false;
+	public bool hasWeapon = false;
 
 	CreatePath path;
 
+	private void Awake() {
+		guard = this.gameObject.transform;
+	}
+
 	private void Start() {
 		currentSpeed = speed;
-		waitTime = checkpointWaitTime;
 		currentHealth = maxHealth;
 		slashInterval = startTimeSlashInterval;
 		defendSprite = statusImage.sprite;
@@ -84,8 +77,27 @@ public class UnitEnemy : MonoBehaviour {
 		// Disable katana
 		katana.SetActive(false);
 
-		originalLookRadius = lookRadius;
-		//closestWeaponRack = null;
+		tree =
+			 new BTSelector(
+				 // Chase Player
+				 new BTSequence(
+					 new BTCheckPlayerInRange(guard, player),
+					 new BTMoveToNearestWeaponRack(guard, player),
+					 new BTWait(1.0f),
+					 new BTGrabWeapon(guard),
+					 new BTChasePlayer(guard, player, katanaPrefab)
+				 ),
+				 // Patrol
+				 new BTSequence(
+					 new BTMoveToCheckpoint(player, guard, checkpoints),
+					 new BTWait(1.0f),
+					 new BTFindNextCheckpoint(player, guard, checkpoints)
+				 )
+			 );
+	}
+
+	private void FixedUpdate() {
+		tree?.Run();
 	}
 
 	private void Update() {
@@ -93,7 +105,7 @@ public class UnitEnemy : MonoBehaviour {
 		float playerDistance = Vector3.Distance(player.position, transform.position);
 
 		if (playerDistance <= lookRadius) {
-			playerInRange = true;
+			//playerInRange = true;
 			statusImage.sprite = attackSprite;
 
 			anim.SetBool("isIdle", false);
@@ -103,21 +115,21 @@ public class UnitEnemy : MonoBehaviour {
 
 			if (playerDistance <= attackRadius) {
 				// Attack
-				attackPlayer = true;
+				//attackPlayer = true;
 				anim.SetBool("isIdle", false);
 				anim.SetBool("isRunning", false);
 				anim.SetBool("isAttacking", true);
 				anim.SetBool("isDeath", false);
 
 			} else {
-				attackPlayer = false;
+				//attackPlayer = false;
 				anim.SetBool("isIdle", false);
 				anim.SetBool("isRunning", true);
 				anim.SetBool("isAttacking", false);
 				anim.SetBool("isDeath", false);
 			}
 		} else {
-			playerInRange = false;
+			//playerInRange = false;
 			statusImage.sprite = defendSprite;
 
 			anim.SetBool("isIdle", false);
@@ -151,110 +163,7 @@ public class UnitEnemy : MonoBehaviour {
 
 			StopCoroutine("FollowPath");
 			StartCoroutine("FollowPath");
-
 		}
-	}
-
-	[Task]
-	private void MoveToPlayer() {
-		UpdatePath(player);
-		Task.current.Succeed();
-	}
-
-	[Task]
-	private void MoveToCheckpoint() {
-		// Play animations
-		anim.SetBool("isIdle", false);
-		anim.SetBool("isRunning", true);
-		anim.SetBool("isAttacking", false);
-		anim.SetBool("isDeath", false);
-
-		// Move to checkpoint
-		UpdatePath(checkpoints[checkpointCounter]);
-		
-		// Distance to the checkpoint
-		float patrolDistance = Vector3.Distance(checkpoints[checkpointCounter].position, transform.position);
-
-		// If distance is between unit and checkpoint destination is smaller or equal to destination, the unit has reached its destination
-		if (patrolDistance <= stoppingDst) {
-			Task.current.Succeed();
-		}
-	}
-
-	[Task]
-	private void FindNextCheckpoint() {
-		// Play animations
-		anim.SetBool("isIdle", true);
-		anim.SetBool("isRunning", false);
-		anim.SetBool("isAttacking", false);
-		anim.SetBool("isDeath", false);
-
-		if (checkpointCounter < checkpoints.Length - 1) {
-			checkpointCounter++;
-		} else {
-			checkpointCounter = 0;
-		}
-		Task.current.Succeed();
-	}
-
-	[Task]
-	private void MoveToNearestWeaponRack() {
-		lookRadius = 100;
-
-		// Find nearest weaponrack transform and move enemy to that position
-		UpdatePath(getClosestWeaponRack());
-		Task.current.Succeed();
-	}
-
-	[Task]
-	private void GrabWeapon() {
-		if (hasKatana == false) {
-			hasKatana = true;
-			katana.SetActive(true);
-			lookRadius = originalLookRadius;
-			Task.current.Succeed();
-		}
-	}
-
-	private Transform getClosestWeaponRack() {
-		// Create instances
-		float closestDistance = Mathf.Infinity;
-		Transform trans = null;
-
-		// Loop through all weaponrack transforms
-		foreach (Transform wrTrans in weaponRacks) {
-			float currentDistance;
-			currentDistance = Vector3.Distance(transform.position, wrTrans.transform.position);
-
-			if (currentDistance < closestDistance) {
-				closestDistance = currentDistance;
-				trans = wrTrans.transform;
-			}
-		}
-		return trans;
-	}
-
-	[Task]
-	private void SlashKatana() {
-		if (slashInterval <= 0) {
-
-			slashInterval = startTimeSlashInterval;
-		} else {
-			slashInterval -= Time.deltaTime;
-		}
-		Task.current.Succeed();
-	}
-
-	[Task]
-	private void Stun() {
-		// Play animations
-		anim.SetBool("isIdle", true);
-		anim.SetBool("isRunning", false);
-		anim.SetBool("isAttacking", false);
-		anim.SetBool("isDeath", false);
-
-		Task.current.Succeed();
-
 	}
 
 	// Update path to target position
@@ -306,6 +215,334 @@ public class UnitEnemy : MonoBehaviour {
 		}
 	}
 
+	//Main node
+	public abstract class BTNode {
+		public enum BTResult { Success, Failed, Running }
+		public abstract BTResult Run();
+		private bool isInitialized = false;
+
+		public BTResult OnUpdate() {
+			if (!isInitialized) {
+				OnEnter();
+				isInitialized = true;
+			}
+			BTResult result = Run();
+			if (result != BTResult.Running) {
+				OnExit();
+				isInitialized = false;
+			}
+			return result;
+		}
+
+		public virtual void OnEnter() { }
+		public virtual void OnExit() { }
+	}
+
+	//Action node
+	public class BTWait : BTNode {
+		private float waitTime;
+		private float currentTime;
+		public BTWait(float _waitTime) {
+			waitTime = _waitTime;
+		}
+
+		public override BTResult Run() {
+			currentTime += Time.deltaTime;
+			if (currentTime >= waitTime) {
+				currentTime = 0;
+				return BTResult.Success;
+			}
+			return BTResult.Running;
+
+		}
+	}
+
+	//Action node
+	public class BTDebug : BTNode {
+		private string debugMessage;
+		public BTDebug(string _debugMessage) {
+			debugMessage = _debugMessage;
+		}
+
+		public override BTResult Run() {
+			Debug.Log(debugMessage);
+			return BTResult.Success;
+		}
+	}
+
+	//Composite node
+	public class BTSequence : BTNode {
+		private BTNode[] children;
+		private int currentIndex = 0;
+
+		public BTSequence(params BTNode[] _children) {
+			children = _children;
+		}
+
+		public override BTResult Run() {
+			for (; currentIndex < children.Length; currentIndex++) {
+				BTResult result = children[currentIndex].OnUpdate();
+				switch (result) {
+					case BTResult.Failed:
+						currentIndex = 0;
+						return BTResult.Failed;
+					case BTResult.Running:
+						return BTResult.Running;
+					case BTResult.Success: break;
+				}
+			}
+			currentIndex = 0;
+			return BTResult.Success;
+		}
+	}
+
+	//Composite node
+	public class BTSelector : BTNode {
+		private BTNode[] children;
+		private int currentIndex = 0;
+
+		public BTSelector(params BTNode[] _children) {
+			children = _children;
+		}
+
+		public override BTResult Run() {
+			for (; currentIndex < children.Length; currentIndex++) {
+				BTResult result = children[currentIndex].OnUpdate();
+				switch (result) {
+					case BTResult.Failed: break;
+					case BTResult.Running:
+						return BTResult.Running;
+					case BTResult.Success:
+						currentIndex = 0;
+						return BTResult.Success;
+				}
+			}
+			currentIndex = 0;
+			return BTResult.Failed;
+		}
+	}
+
+	//Action node
+	public class BTMoveToCheckpoint : BTNode {
+
+		private Transform guard;
+		private Transform player;
+		private Transform[] checkpoints;
+		private UnitEnemy guardScript;
+
+		public BTMoveToCheckpoint(Transform _player, Transform _guard, Transform[] _checkpoints) {
+			player = _player;
+			guard = _guard;
+			checkpoints = _checkpoints;
+			guardScript = _guard.GetComponent<UnitEnemy>();
+		}
+
+		public override BTResult Run() {
+			// Distance to player
+			float distanceToPlayer = Vector3.Distance(player.position, guard.position);
+			if (distanceToPlayer <= guardScript.lookRadius) {
+				guardScript.playerInRange = true;
+			}
+
+			if (guardScript.playerInRange) {
+				return BTResult.Failed;
+			}
+
+			// Move to checkpoint
+			guardScript.UpdatePath(checkpoints[guardScript.checkpointCounter]);
+
+			// Distance to the checkpoint
+			float patrolDistance = Vector3.Distance(checkpoints[guardScript.checkpointCounter].position, guard.position);
+
+			// If distance is between unit and checkpoint destination is smaller or equal to destination, the unit has reached its destination
+			if (patrolDistance <= guardScript.stoppingDst) {
+				guardScript.hasArrivedAtCheckpoint = true;
+				Debug.Log(guardScript.checkpointCounter);
+				return BTResult.Success;
+			}
+
+			return BTResult.Running;
+		}
+	}
+
+	public class BTFindNextCheckpoint : BTNode {
+
+		private Transform guard;
+		private Transform player;
+		private Transform[] checkpoints;
+		private UnitEnemy guardScript;
+
+		public BTFindNextCheckpoint(Transform _player, Transform _guard, Transform[] _checkpoints) {
+			player = _player;
+			guard = _guard;
+			checkpoints = _checkpoints;
+			guardScript = _guard.GetComponent<UnitEnemy>();
+		}
+
+		public override BTResult Run() {
+			if (guardScript.hasArrivedAtCheckpoint) {
+				guardScript.hasArrivedAtCheckpoint = false;
+				guardScript.checkpointCounter++;
+
+				if (guardScript.checkpointCounter >= checkpoints.Length) {
+					guardScript.checkpointCounter = 0;
+				}
+			}
+			return BTResult.Success;
+		}
+	}
+
+	//Condition node
+	public class BTCheckPlayerInRange : BTNode {
+
+		private Transform player;
+		private Transform guard;
+		private UnitEnemy guardScript;
+
+		public BTCheckPlayerInRange(Transform _guard, Transform _player) {
+			guard = _guard;
+			player = _player;
+			guardScript = guard.GetComponent<UnitEnemy>();
+		}
+
+		public override BTResult Run() {
+			// Distance to player
+			float distanceToPlayer = Vector3.Distance(player.position, guard.position);
+
+			// Player is out of range
+			if (distanceToPlayer <= guardScript.lookRadius) {
+				guardScript.playerInRange = true;
+				//Debug.LogWarning("In range!");
+				return BTResult.Success;
+			} else {
+				guardScript.playerInRange = false;
+				//Debug.LogWarning("Not in range!");
+				return BTResult.Failed;
+			}
+		}
+	}
+
+	//Action node
+	public class BTMoveToNearestWeaponRack : BTNode {
+
+		private Transform guard;
+		private Transform player;
+		private UnitEnemy guardScript;
+
+		public BTMoveToNearestWeaponRack(Transform _guard, Transform _player) {
+			guard = _guard;
+			player = _player;
+			guardScript = guard.GetComponent<UnitEnemy>();
+		}
+
+		public override BTResult Run() {
+			// Check if ally is behind cover, else find cover
+			Transform nearestRock = GetNearestRock();
+			guardScript.UpdatePath(nearestRock);
+			//guardScript.speed = 12;
+
+			// Distance to the nearest weapon rack
+			float rockDistance = Vector3.Distance(nearestRock.position, guard.position);
+
+			// If the guard is close enough to the weapon, take it
+			if (rockDistance <= guardScript.stoppingDst / 3) {
+				guardScript.hasArrivedAtWeaponRack = true;
+				Debug.LogWarning("got weapon!");
+				return BTResult.Success;
+			}
+			return BTResult.Running;
+		}
+
+		// Get the nearest rock
+		private Transform GetNearestRock() {
+			Transform nearestRock = null;
+			float nearestDistance = Mathf.Infinity;
+
+			foreach (Transform rock in guardScript.weapons) {
+				float distance = Vector3.Distance(rock.transform.position, guard.position);
+				if (distance <= nearestDistance) {
+					nearestRock = rock.transform;
+					nearestDistance = distance;
+				}
+			}
+
+			return nearestRock;
+		}
+	}
+
+	//Action node
+	public class BTGrabWeapon : BTNode {
+
+		private Transform guard;
+		private UnitEnemy guardScript;
+
+		public BTGrabWeapon(Transform _guard) {
+			guard = _guard;
+			guardScript = guard.GetComponent<UnitEnemy>();
+		}
+
+		public override BTResult Run() {
+			guardScript.katana.SetActive(true);
+			guardScript.hasWeapon = true;
+			return BTResult.Success;
+		}
+	}
+
+	//Action node
+	public class BTChasePlayer : BTNode {
+
+		private Transform player;
+		private Transform guard;
+		private UnitEnemy guardScript;
+		private GameObject katanaPrefab;
+
+		private float slashInterval = 2f;
+		private float lastAttackTime;
+
+		public BTChasePlayer(Transform _guard, Transform _player, GameObject _katanaPrefab) {
+			guard = _guard;
+			player = _player;
+			katanaPrefab = _katanaPrefab;
+			guardScript = guard.GetComponent<UnitEnemy>();
+		}
+
+		public override BTResult Run() {
+			// Distance to player
+			float distanceToPlayer = Vector3.Distance(player.position, guard.position);
+			if (distanceToPlayer >= guardScript.lookRadius) {
+				guardScript.playerInRange = false;
+
+				// Drop katana
+				guardScript.katana.SetActive(false);
+				var katana = Instantiate(katanaPrefab, guard.position, Quaternion.identity);
+
+				Vector3 katanaPosition = guard.position + new Vector3(0f, 0.1f, 0f);
+				katana.transform.position = katanaPosition;
+
+				Quaternion katanaRotation = Quaternion.Euler(
+					90f, // Random X axis rotation
+					guard.rotation.eulerAngles.y, // Use the Y axis rotation of the guard Transform
+					Random.Range(0f, 360f) // Random Z axis rotation
+				);
+
+				katana.transform.rotation = katanaRotation;
+
+				return BTResult.Failed;
+			}
+
+			// If player is very close, attack with SlashKatana
+			if (distanceToPlayer <= guardScript.stoppingDst / 4) {
+				if (Time.time - lastAttackTime > slashInterval) {
+					Debug.Log("Attacking");
+					lastAttackTime = Time.time;
+				}
+			}
+
+			guardScript.UpdatePath(player);
+			return BTResult.Running;
+		}
+	}
+
 	// Take damage when hit
 	private void OnTriggerEnter(Collider other) {
 		if (other.CompareTag("Shuriken")) {
@@ -319,10 +556,10 @@ public class UnitEnemy : MonoBehaviour {
 	// Stun the enemy for 5 seconds
 	private IEnumerator Stunning() {
 		Debug.Log("STUNNED!");
-		isStunned = true;
+		//isStunned = true;
 		yield return new WaitForSeconds(5);
 		Debug.Log("normal state");
-		isStunned = false;
+		//isStunned = false;
 	}
 
 
