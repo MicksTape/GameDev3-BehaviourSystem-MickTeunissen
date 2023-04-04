@@ -6,4 +6,5 @@ Documentatie: https://github.com/MicksTape/GameDev3-BehaviourSystem-MickTeunisse
 
 Build: https://github.com/MicksTape/GameDev3-BehaviourSystem-MickTeunissen/blob/main/BehaviorSystem_GameDevAI_Mick_Teunissen_Build.zip
 
-Gameplay-Video: https://youtu.be/STbYZWH7PYE
+Gameplay-Video Behavior System opdr-3: https://youtu.be/STbYZWH7PYE
+Gameplay-Video Boids opdr-1: https://youtu.be/BQKR0XCJH5s
